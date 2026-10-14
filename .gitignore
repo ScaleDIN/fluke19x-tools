@@ -1,0 +1,3 @@
+__pycache__/
+# Flash dumps and backups hold one meter's calibration; keep them out of the repo.
+*.bin
