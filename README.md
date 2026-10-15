@@ -1,5 +1,14 @@
 # Fluke 19x ScopeMeter tools
 
+> [!CAUTION]
+> **Use at your own risk.** These tools write to the meter's flash memory and calibration data. A failed or interrupted write, a bad contact, an untested flash chip, a wrong option or a bug in these tools can **brick the meter**, **destroy its factory calibration**, or leave it reading incorrectly.
+>
+> **Make a full backup before you change anything**, check that it reads back correctly, and keep it somewhere safe. A lost calibration can't be recreated without a professional recalibration.
+>
+> This software is provided **"as is", without warranty of any kind**, express or implied. The author accepts **no responsibility or liability** for bricked or damaged meters, lost calibration, inaccurate measurements, voided warranties, damage to other equipment, or any other direct or indirect loss resulting from the use or misuse of these tools or the information in this README. By using them you accept full responsibility for the outcome.
+>
+> This project is not affiliated with, endorsed by or supported by Fluke Corporation. Fluke and ScopeMeter are trademarks of Fluke Corporation. Modifying a meter may void its warranty and calibration certification; a converted meter's calibration is not traceable to any 199C calibration.
+
 Python tools for the Fluke 196/199 (B/C) ScopeMeters running firmware V08.04:
 
 - enable the Medical and BusHealth options over the optical serial port,
@@ -146,3 +155,7 @@ The meter rewrites the cal banks itself when it saves settings, and the padding 
 - Above 100 MHz, a converted 196 keeps its original 100 MHz calibration. Get a 199C calibration if accurate high-frequency readings matter.
 - The programmer firmware uses SST-style unlock addresses (0x5555/0x2AAA). These work for chip ID on ST chips, but erase and write were only tested on SST.
 - The programmer has no flow control, so the tools write one byte per serial call.
+
+## License
+
+MIT, see [LICENSE](LICENSE). Provided as is, with no warranty; see the caution at the top of this README.
