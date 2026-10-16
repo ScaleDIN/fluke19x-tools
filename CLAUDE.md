@@ -4,8 +4,11 @@
 
 Meter-specific notes (`HANDOFF.md`), flash dumps, the programmer hardware/firmware and retired scripts live outside the repo in `..\fluke19x-backups\` (checksums in `MD5SUMS.before`).
 
+## Firmware patch work in progress
+Before doing anything else in a session, read `..\fluke19x-backups\RE-STATUS.md`. It has the goals, the state of each patch, what the user has decided, and the next step. Update it before the session ends. The RE scripts are in `..\fluke19x-backups\re\`. Don't work from session scratchpad copies.
+
 ## Hardware
-- Flash programmer: COM11, 115200. Meter optical cable: COM13 (meter currently at 115200; tools auto-detect).
+- Flash programmer: COM11, 115200. Meter optical cable: COM13 (the meter drops to 1200 baud after every off/on; send `PC 115200` at 1200 to restore it).
 
 ## Safety rules
 - Never send `EM` with `flukeuhm`; it appears to jump to the bootloader/update mode.
