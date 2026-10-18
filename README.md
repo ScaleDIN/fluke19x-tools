@@ -14,7 +14,8 @@ Python tools for the Fluke 196/199 (B/C) ScopeMeters running firmware V08.04:
 - enable the Medical and BusHealth options over the optical serial port,
 - convert a 196B/196C memory module into a 199C while keeping the meter's own calibration,
 - dump the 2 MB flash over the optical port,
-- grab a trace and plot it with its FFT.
+- grab a trace and plot it with its FFT,
+- build a patched V08.04 image with the sample rate and a Li-ion battery gauge.
 
 Requires Python 3 with `pyserial`; `scope_fft.py` also needs `numpy` and `matplotlib`.
 
@@ -34,6 +35,7 @@ The serial-port tools need only the meter's optical cable. The memory-module con
 | `convert_to_199c.bat` → `tools/convert_to_199c.py` | programmer + module | Converts a 196B/196C module to 199C V08.04, keeping its cal |
 | `tools/serial_dump.py` | optical cable | Full 2 MB flash dump |
 | `tools/scope_fft.py` | optical cable | Captures input A and plots waveform + FFT |
+| `firmware_patches/build_image.py` | programmer + module | Builds a patched V08.04 image: sample rate and Li-ion battery gauge (see [Firmware patches](#firmware-patches)) |
 
 The `.bat` files are double-click wrappers for Windows; they pass any arguments through and keep the window open at the end.
 
@@ -91,6 +93,64 @@ Captures a trace with `QW` (10 = input A), converts the samples to volts using t
 - **Don't update it with Fluke's FlashTool.** The official serial update rewrites 0x74–0x7C with 196-type values, so even a successful update leaves a converted 196B unbootable. See [Firmware updates over the optical port](#firmware-updates-over-the-optical-port).
 - **Display contrast.** A color LCD fitted to a 196B starts with the mono LCD's contrast settings. Set them in the meter's cal mode, steps CL 0100 (max dark), CL 0110 (default) and CL 0120 (max bright), as in the service manual, section 5.4. To get there: hold USER, press and release CLEAR MENU, release USER. F1 steps to CL 0100; F3 starts and ends each step, the arrows adjust, F2 moves to the next step; F4 EXIT, YES saves. Per section 5.7, changing only the contrast doesn't change the cal date or counter. Do it on the charger, and don't press F3 at the WarmingUp step (CL 0200).
 - **Bandwidth.** Above 100 MHz, a converted 196 keeps its original 100 MHz calibration. Get a 199C calibration if accurate high-frequency readings matter.
+
+## Firmware patches
+
+`firmware_patches/` builds a patched image from **your own** full 2 MB dump and adds three things:
+
+- the sample rate on screen,
+- the battery voltage next to the battery symbol,
+- a battery gauge that suits a 2S Li-ion pack.
+
+No firmware is included. Only the scripts are here, and their output (`*.bin`) is kept out of the repo.
+
+> [!WARNING]
+> - **V08.04 only.** The patches hook fixed addresses in the V08.04 code. Before changing anything, `build_image.py` checks the original word at every patch site and checks that the code area is erased. If anything differs, it stops.
+> - **Write it with the programmer only** (`convert_to_199c.py --restore`). Fluke's FlashTool file doesn't include the patch code, and FlashTool would make a converted 196B unbootable (see [Firmware updates](#firmware-updates-over-the-optical-port)).
+> - **The battery part is tuned for one pack and one meter** (below). Don't use it with a stock NiMH pack.
+> - Tested on one meter (ex-196B converted to 199C, 2S2P NCR18650 pack). It runs there as v7.
+
+```bash
+pip install capstone unicorn
+cd firmware_patches
+python build_image.py <your_dump.bin> <patched.bin>      # writes patched.bin and patched.bin.txt (patch list + listings)
+python emutest.py <your_dump.bin>                        # battery code in an ARM emulator: should end "0 failures"
+python toptest.py <your_dump.bin>                        # top-band code: should end "0 failures"
+python -u ../tools/convert_to_199c.py --port COMx --restore <patched.bin>   # add --force-st for an ST module
+```
+
+`build_image.py` never overwrites an existing output. Use a dump of the module you're about to write: the cal banks are copied unchanged from it. The optional third argument picks an older version (`v6`, `top` = v5, `top3` = v3, `84` = v2, `279` = v1). Those rebuild byte for byte and exist for reference; v7 is the default.
+
+### What each patch does
+
+New code goes into erased flash at 0x1E9000–0x1E9D3F. The firmware reaches it through repointed entries in the UI callback table (0x401AF29C, 360 entries) and a few redirected branches.
+
+| Patch | File | What it does |
+|---|---|---|
+| Sample rate + voltage in the top band | `toppatch.py`, `samplerate.py` | Callback #181 (status text ending in the battery glyph) shows `2.5G 8.23V<glyph>` on the plain scope screen. When the rate has 3+ digits it shows one voltage decimal (`1.25G 8.2V`), so the text fits the ~5-glyph box. On every other screen the text stays stock: meter mode, spectrum, bus health, Scope Record and any status text. Callback #84 (bottom-bar timebase) stays stock, but it triggers a redraw so the rate follows timebase changes. |
+| Battery voltage | `battpatch.py` (`cb181`) | Puts the pack voltage, `X.YZV`, in front of the battery/plug glyph. |
+| Coulomb-counting gauge | `battpatch.py` (`integ`) | Replaces the firmware integrator. The stock one counts charge from the current *setpoint*, which overcounts badly once a voltage clamp limits the current. The new one counts the *measured* current both ways (99 % charge efficiency) and remembers any shortfall below empty. It marks "full" on the constant-voltage taper and redraws the voltage text when it moves by 10 mV. |
+| Capacity learning | `battpatch.py` (`learn`) | At the empty event, if a full mark was seen since the last one, capacity = charge drawn between full and empty, clamped to 1000–11000 mAh. This replaces the stock +100 mAh step. |
+| Gauge start from voltage | `battpatch.py` (`estimate`, `binit`) | After a battery reconnect, the firmware resets the gauge to capacity/4. The patch replaces that with an estimate from the resting voltage, with load compensation. |
+| Firmware tweaks | `battpatch.py` (`build`) | No 6 h-timer or dT/dt "full" marks. No −2 mAh on charger connect. Self-discharge 1 %/day → ~0.1 %/day. Low-battery warning 6.9 V → 6.6 V. Initial capacity 6000 mAh. |
+
+The integrator's variables live in high RAM at 0x440FFF00: magic `BAT2`, deficit, anchored flag, taper counter, last mV, capacity copy, estimate pending. They reset when the battery is disconnected.
+
+### Pack-specific settings
+
+All in the marked block at the top of `battpatch.py`, plus the thresholds listed there:
+
+| Setting | Value here | Why |
+|---|---|---|
+| `INIT_CAP` | 6000 mAh | 2S2P NCR18650. Learning corrects it after one full→empty cycle |
+| `MIN_CAP`, `MAX_CAP` | 1000, 11000 mAh | Keep `MAX_CAP` ≤ 11000: the firmware's 95 % compare overflows above ~12500 |
+| `SOC_CURVE` | 8250 mV = 100 % … 7580 = 50 % … 6000 = 0 | 2S Li-ion resting voltage, with full matched to the ~8.26 V hardware clamp |
+| `V_CORR` | +80 mV | This meter's ADC reads 80 mV under a DMM. Measure yours |
+| `SOC_RLOAD` | 0.2 Ω | Load compensation for the voltage estimate |
+| Full detection | meter off, 0 ≤ I < 100 mA, 2·I < setpoint, V > 7.9 V for ~5 min | Constant-voltage taper; doesn't depend on the exact clamp voltage |
+| Low warning | 6.6 V | Stock 6.9 V is too early for Li-ion. Empty stays at 6.0 V |
+
+The patch does **not** limit the charge voltage. The firmware still charges with its NiMH profile, so the pack needs a hardware clamp (the R4113 change in [Battery and charger](#battery-and-charger-for-pack-replacements)) and a BMS. Temperature limits are stock.
 
 ## How it works
 
