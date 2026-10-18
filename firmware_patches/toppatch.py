@@ -38,7 +38,7 @@ def emit_short_volts(a):
 REC_PRED = 0x4010208c           # (0, 2, 1) != 0: recorder screen (badge cb #182: RECORDING/WAITING/ZOOM/STOPPED)
 
 
-def build(base, batt_cb181, adaptive=True, rec_check=False):
+def build(base, batt_cb181, adaptive=True, rec_check=False, et_mark=False):
     # adaptive (v4): no "S/s", and one voltage decimal when the rate has 3+ digits (box is ~5 glyphs wide).
     # adaptive=False rebuilds v3 ("2.5GS/s 8.23V").
     a = Asm(base)
@@ -124,5 +124,5 @@ def build(base, batt_cb181, adaptive=True, rec_check=False):
     a.pop(['r4', 'r5', 'r6', 'pc'])
 
     a.label('rate')
-    sr.build_cb(base, a, orig=sr.CB84, rate_only=True, suffix=not adaptive)
+    sr.build_cb(base, a, orig=sr.CB84, rate_only=True, suffix=not adaptive, et_mark=et_mark)
     return a

@@ -108,7 +108,7 @@ No firmware is included. Only the scripts are here, and their output (`*.bin`) i
 > - **V08.04 only.** The patches hook fixed addresses in the V08.04 code. Before changing anything, `build_image.py` checks the original word at every patch site and checks that the code area is erased. If anything differs, it stops.
 > - **Write it with the programmer only** (`convert_to_199c.py --restore`). Fluke's FlashTool file doesn't include the patch code, and FlashTool would make a converted 196B unbootable (see [Firmware updates](#firmware-updates-over-the-optical-port)).
 > - **The battery part is tuned for one pack and one meter** (below). Don't use it with a stock NiMH pack.
-> - Tested on one meter (ex-196B converted to 199C, 2S2P NCR18650 pack). It runs there as v7.
+> - Tested on one meter (ex-196B converted to 199C, 2S2P NCR18650 pack). It runs there as v7; v8 (the `*` rate marker) is tested in the emulator only.
 
 ```bash
 pip install capstone unicorn
@@ -119,15 +119,15 @@ python toptest.py <your_dump.bin>                        # top-band code: should
 python -u ../tools/convert_to_199c.py --port COMx --restore <patched.bin>   # add --force-st for an ST module
 ```
 
-`build_image.py` never overwrites an existing output. Use a dump of the module you're about to write: the cal banks are copied unchanged from it. The optional third argument picks an older version (`v6`, `top` = v5, `top3` = v3, `84` = v2, `279` = v1). Those rebuild byte for byte and exist for reference; v7 is the default.
+`build_image.py` never overwrites an existing output. Use a dump of the module you're about to write: the cal banks are copied unchanged from it. The optional third argument picks an older version (`v7`, `v6`, `top` = v5, `top3` = v3, `84` = v2, `279` = v1). Those rebuild byte for byte and exist for reference; v8 is the default.
 
 ### What each patch does
 
-New code goes into erased flash at 0x1E9000–0x1E9D3F. The firmware reaches it through repointed entries in the UI callback table (0x401AF29C, 360 entries) and a few redirected branches.
+New code goes into erased flash at 0x1E9000–0x1E9D73. The firmware reaches it through repointed entries in the UI callback table (0x401AF29C, 360 entries) and a few redirected branches.
 
 | Patch | File | What it does |
 |---|---|---|
-| Sample rate + voltage in the top band | `toppatch.py`, `samplerate.py` | Callback #181 (status text ending in the battery glyph) shows `2.5G 8.23V<glyph>` on the plain scope screen. When the rate has 3+ digits it shows one voltage decimal (`1.25G 8.2V`), so the text fits the ~5-glyph box. On every other screen the text stays stock: meter mode, spectrum, bus health, Scope Record and any status text. Callback #84 (bottom-bar timebase) stays stock, but it triggers a redraw so the rate follows timebase changes. |
+| Sample rate + voltage in the top band | `toppatch.py`, `samplerate.py` | Callback #181 (status text ending in the battery glyph) shows `2.5G 8.23V<glyph>` on the plain scope screen. When the rate has 3+ digits it shows one voltage decimal (`1.25G 8.2V`), so the text fits the ~5-glyph box. The rate is 1/(time per trace point), 25 points per division. Above the 2.5 GS/s real-time ADC rate (10 ns/div), the trace points are equivalent-time or reconstructed, so v8 adds a `*` (`5G*` at 5 ns/div). On every other screen the text stays stock: meter mode, spectrum, bus health, Scope Record and any status text. Callback #84 (bottom-bar timebase) stays stock, but it triggers a redraw so the rate follows timebase changes. |
 | Battery voltage | `battpatch.py` (`cb181`) | Puts the pack voltage, `X.YZV`, in front of the battery/plug glyph. |
 | Coulomb-counting gauge | `battpatch.py` (`integ`) | Replaces the firmware integrator. The stock one counts charge from the current *setpoint*, which overcounts badly once a voltage clamp limits the current. The new one counts the *measured* current both ways (99 % charge efficiency) and remembers any shortfall below empty. It marks "full" on the constant-voltage taper and redraws the voltage text when it moves by 10 mV. |
 | Capacity learning | `battpatch.py` (`learn`) | At the empty event, if a full mark was seen since the last one, capacity = charge drawn between full and empty, clamped to 1000–11000 mAh. This replaces the stock +100 mAh step. |

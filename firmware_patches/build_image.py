@@ -1,5 +1,5 @@
 # Build the combined V8.04 patch image (sample rate + Li-ion battery) from a full 2 MB dump.
-#   python build_image.py <input.bin> <output.bin> [mode]   (mode: v7 = v6 + stock text in Scope Record (default), v6 = v5 + gauge start from voltage, top = v5, top3 = v3,
+#   python build_image.py <input.bin> <output.bin> [mode]   (mode: v8 = v7 + "5G*" above 2.5 GS/s (default), v7 = v6 + stock text in Scope Record, v6 = v5 + gauge start from voltage, top = v5, top3 = v3,
 #                                                            84 = bottom bar (v2), 279 = v1)
 # Input is only read. Output must not exist. Writes <output>.txt with the listing and patch list.
 # Every patch site is checked against its expected original word, and the code area must be erased.
@@ -32,9 +32,10 @@ EXPECT = {                               # address -> original word
 SR_ORIG = {84: sr.CB84, 279: sr.ORIG_CB}
 
 
-def main(src, dst, mode='v7'):
-    rec = mode == 'v7'
-    soc = mode in ('v6', 'v7')
+def main(src, dst, mode='v8'):
+    et = mode == 'v8'
+    rec = mode in ('v7', 'v8')
+    soc = mode in ('v6', 'v7', 'v8')
     if soc:
         mode = 'top'
         EXPECT.update(bp.BINIT_CALLS)
@@ -49,7 +50,7 @@ def main(src, dst, mode='v7'):
 
     batt, batt_code, patches = bp.build(BATT_BASE, soc)
     if top:
-        sra = tp.build(SR_BASE, batt.labels['cb181'], adaptive=mode == 'top', rec_check=rec)
+        sra = tp.build(SR_BASE, batt.labels['cb181'], adaptive=mode == 'top', rec_check=rec, et_mark=et)
         sr_code = sra.assemble()
         patches[TABLE + 181 * 4] = sra.labels['top181']
         patches[TABLE + 84 * 4] = sra.labels['cb84h']

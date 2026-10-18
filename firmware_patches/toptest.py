@@ -23,9 +23,9 @@ def check(name, ok):
 
 
 class M:
-    def __init__(self, adaptive=False, rec_check=False):
+    def __init__(self, adaptive=False, rec_check=False, et_mark=False):
         b, bcode, _ = bp.build(BATT)
-        t = tp.build(TOP, b.labels['cb181'], adaptive=adaptive, rec_check=rec_check)
+        t = tp.build(TOP, b.labels['cb181'], adaptive=adaptive, rec_check=rec_check, et_mark=et_mark)
         tcode = t.assemble()
         self.L = t.labels
         img = bytearray(open(IMG, 'rb').read())
@@ -145,5 +145,33 @@ v4(b' 2.5k', 8150, b' \x98', 'v7 recorder (any non-zero) -> stock', orig=b' \x98
 m.recorder, m.rec_args = 1, []
 v4(b' 2.5k', 8150, b'LOW AMPL \x98', 'v7 status text -> stock before the predicate', orig=b'LOW AMPL \x98')
 check(f'v7 predicate not called when the stock text already rules it out: {m.rec_args}', m.rec_args == [])
+print('--- v8 (real rate formatter, "*" above 2.5 GS/s)')
+
+
+def rate_suite(et):
+    m = M(adaptive=True, rec_check=True, et_mark=et)
+    del m.stubs[m.L['rate']]
+    m.tb = b'   5ns'
+    res = {}
+    def s_trace():
+        m.u.mem_write(m.u.reg_read(UC_ARM_REG_R2), struct.pack('<I', 0x44123450)); m.ret(0)
+    def s_xres6():
+        p, (mant, e) = m.u.reg_read(UC_ARM_REG_R0), res['v']
+        m.u.mem_write(p + 2, struct.pack('<hI', e, mant)); m.ret(0)
+    m.stubs.update({sr.P_XY: lambda: m.ret(0), sr.P_A1: lambda: m.ret(0), sr.TRACE: s_trace,
+                    sr.TTYPE: lambda: m.ret(6), sr.XRES6: s_xres6})
+    tag = 'v8' if et else 'v7'
+    # (mantissa, exponent) of s/point, text, '*' expected. 399 ps = 2.506 GS/s: shown as 2.5G, below the cut (q 250).
+    for mant, e, want, star in [(2, -10, b' 5G', 1), (1, -10, b' 10G', 1), (25, -11, b' 4G', 1), (4, -10, b' 2.5G', 0),
+                                (399, -12, b' 2.5G', 0), (8, -10, b' 1.25G', 0), (4, -4, b' 2.5k', 0),
+                                (40, -9, b' 25M', 0), (2, -3, b' 500', 0)]:
+        want += b'*' if et and star else b''
+        res['v'] = (mant, e)
+        r, s, ok = m.call('rate')
+        check(f'{tag} {mant}e{e} s/pt -> {s!r}', s == want and r == 0xc000 and ok)
+
+
+rate_suite(False)
+rate_suite(True)
 print(f'\n{fails} failures')
 sys.exit(1 if fails else 0)

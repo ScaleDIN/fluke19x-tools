@@ -17,9 +17,13 @@ def pred(a, fn, arg):
     a.cmp('r0', 0)
 
 
-def build_cb(base, a=None, orig=ORIG_CB, rate_only=False, suffix=True):
+ET_Q, ET_X = 250, 9                              # 2.5 GS/s = q 250, leading-digit exponent 9: the real-time ADC limit
+
+
+def build_cb(base, a=None, orig=ORIG_CB, rate_only=False, suffix=True, et_mark=False):
     # rate_only: write just " <rate>S/s" at buf (the timebase text is only used to see if it's shown)
     # suffix=False: no "S/s", e.g. " 2.5G"
+    # et_mark (v8): '*' after the unit above 2.5 GS/s (5 ns/div = 200 ps/point: not real-time samples), e.g. " 5G*"
     a = a or Asm(base)
     # frame: sp+0 arg slot, sp+0x08 handle, sp+0x10 Float10, sp+0x18 out ptr
     a.push(['r4', 'r5', 'r6', 'r7', 'r8', 'sb', 'sl', 'lr'])
@@ -89,6 +93,11 @@ def build_cb(base, a=None, orig=ORIG_CB, rate_only=False, suffix=True):
     a.sub('r7', 'r7', 'sb')
     a.cmp('r7', 11); a.mov('r7', 11, cond='gt')
     a.mvn('r0', 2); a.cmp('r7', 'r0'); a.mov('r7', 'r0', cond='lt')
+    if et_mark:                           # flag = X > 9 or (X == 9 and q > 250); sp+0x18 is free after the Float10
+        a.mov('r0', 0)
+        a.cmp('r7', ET_X); a.mov('r0', 1, cond='gt')
+        a.cmp('r8', ET_Q, cond='eq'); a.mov('r0', 1, cond='gt')
+        a.str('r0', 'sp', 0x18)
     # u = floor(X/3) (in -1..3), intdigits = X - 3u + 1
     a.add('r1', 'r7', 3); a.mov('r0', 3); a.call(DIVMOD)
     a.sub('sb', 'r0', 1)                  # u
@@ -128,6 +137,9 @@ def build_cb(base, a=None, orig=ORIG_CB, rate_only=False, suffix=True):
     a.ldrb('r0', 'r1', 1)                 # units[u + 1]
     a.cmp('r0', 0x20)
     a.strb('r0', 'r4', 0, cond='ne'); a.add('r4', 'r4', 1, cond='ne')
+    if et_mark:
+        a.ldr('r0', 'sp', 0x18); a.cmp('r0', 0)
+        a.mov('r0', ord('*'), cond='ne'); a.strb('r0', 'r4', 0, cond='ne'); a.add('r4', 'r4', 1, cond='ne')
     if suffix:
         a.mov('r0', ord('S')); a.strb('r0', 'r4', 0)
         a.mov('r0', ord('/')); a.strb('r0', 'r4', 1)
