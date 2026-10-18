@@ -149,7 +149,7 @@ def main():
     ap.add_argument('--donor', default=DEFAULT_DONOR)
     ap.add_argument('--color-lcd', action='store_true', help='mono unit has had a color LCD fitted')
     ap.add_argument('--options', choices=['all', 'keep'], default='all')
-    ap.add_argument('--force-st', action='store_true', help='allow writing ST chips (untested)')
+    ap.add_argument('--force-st', action='store_true', help='allow writing ST M29W800 chips (verified on one module only)')
     ap.add_argument('--source', help='offline: build from this 2 MB readback instead of the programmer')
     ap.add_argument('--out', help='offline: where to write the built image')
     ap.add_argument('--restore', help='write this 2 MB backup to the module as-is, then verify')
@@ -184,8 +184,9 @@ def main():
     kinds = {CHIPS[i] for i in ids}
     print(f'Programmer on {port}, chips: {", ".join(sorted(kinds))}')
     if kinds != {'SST'} and not args.force_st:
-        raise SystemExit('Writing ST chips has never been tested with this programmer; '
-                         'pass --force-st to try anyway (keep the backup!).')
+        raise SystemExit('ST M29W800 writes have only been verified on one module. The programmer '
+                         'uses SST command sequences, which that module accepted, but other ST '
+                         'chips may not. Pass --force-st to write (keep the backup!).')
 
     if args.restore:
         print(f'Module: {"%s, serial %s, options %s" % describe(prog.read("read"))}')
